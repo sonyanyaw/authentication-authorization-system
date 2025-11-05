@@ -1,137 +1,133 @@
-# Система аутентификации и авторизации
+[Читать на русском](./README.ru.md)
 
-## Описание
+# Authentication and Authorization System  
 
-Этот проект представляет собой **бэкенд-приложение**, реализующее **собственную систему аутентификации и авторизации** на основе Django REST Framework (DRF) и PostgreSQL. Приложение **не использует** встроенные механизмы `django.contrib.auth` для управления пользователями и правами доступа.
+## Description
 
-Цель — продемонстрировать понимание разницы между аутентификацией и авторизацией, а также реализовать гибкую систему разграничения прав на уровне бизнес-объектов.
+This project is a **backend application** implementing a **custom authentication and authorization system** built with Django REST Framework (DRF) and PostgreSQL.  
+The application **does not use** the built-in `django.contrib.auth` mechanisms for managing users and permissions.
+
 
 ---
 
-## 🛠️ Технологии
+## 🛠️ Technologies
 
 - **Python 3.x**
 - **Django**
 - **Django REST Framework (DRF)**
 - **PostgreSQL**
-- **PyJWT** (для генерации токенов)
-- **bcrypt** (для хеширования паролей)
+- **PyJWT** (for token generation)
+- **bcrypt** (for password hashing)
 
 ---
 
-## 🧱 Структура Базы Данных
+## 🧱 Database Structure
 
-Проект включает следующие **кастомные модели**:
+The project includes the following **custom models**:
 
 ### 1. `User`
-- `id`: Первичный ключ.
-- `first_name`, `last_name`, `patronymic`: Имя, фамилия, отчество.
-- `email`: Уникальный email пользователя.
-- `password_hash`: Хешированный пароль (с использованием `bcrypt`).
-- `is_active`: Флаг активности (для мягкого удаления).
-- `created_at`, `updated_at`: Даты создания и обновления.
-- `role`: Ссылка на `Role` (ForeignKey).
+- `id`: Primary key  
+- `first_name`, `last_name`, `patronymic`: User’s full name  
+- `email`: Unique user email  
+- `password_hash`: Hashed password (`bcrypt`)  
+- `is_active`: Active flag (for soft deletion)  
+- `created_at`, `updated_at`: Creation and update timestamps  
+- `role`: Foreign key to `Role`  
 
 ### 2. `Role`
-- `id`: Первичный ключ.
-- `name`: Название роли (например, `admin`, `user`, `manager`).
+- `id`: Primary key  
+- `name`: Role name (e.g., `admin`, `user`, `manager`)  
 
 ### 3. `BusinessElement`
-- `id`: Первичный ключ.
-- `name`: Название бизнес-объекта (например, `products`, `orders`, `users`, `access_rules`).
+- `id`: Primary key  
+- `name`: Business entity name (e.g., `products`, `orders`, `users`, `access_rules`)  
 
 ### 4. `AccessRule`
-- `id`: Первичный ключ.
-- `role`: Ссылка на `Role` (ForeignKey).
-- `business_element`: Ссылка на `BusinessElement` (ForeignKey).
-- `read_permission`: Разрешение на чтение.
-- `read_all_permission`: Разрешение на чтение всех объектов.
-- `create_permission`: Разрешение на создание.
-- `update_permission`: Разрешение на обновление своих объектов.
-- `update_all_permission`: Разрешение на обновление всех объектов.
-- `delete_permission`: Разрешение на удаление своих объектов.
-- `delete_all_permission`: Разрешение на удаление всех объектов.
-- **Уникальность**: `(role, business_element)` — каждая роль может иметь только одно правило доступа к одному элементу.
+- `id`: Primary key  
+- `role`: Foreign key to `Role`  
+- `business_element`: Foreign key to `BusinessElement`  
+- Permissions: `read_permission`, `read_all_permission`, `create_permission`, `update_permission`, `update_all_permission`, `delete_permission`, `delete_all_permission`  
+- **Uniqueness**: `(role, business_element)` — each role can have only one access rule per entity.
 
 ---
 
-## 🔐 Аутентификация
+## 🔐 Authentication
 
-- **Регистрация** (`POST /api/auth/register/`):
-  - Принимает: `first_name`, `last_name`, `patronymic`, `email`, `password`, `password_confirm`.
-  - Валидирует совпадение паролей.
-  - Хеширует пароль с помощью `bcrypt`.
-  - Создаёт пользователя с ролью по умолчанию.
-  - Возвращает `JWT`-токен.
+- **Registration** (`POST /api/auth/register/`)  
+  - Accepts: `first_name`, `last_name`, `patronymic`, `email`, `password`, `password_confirm`  
+  - Validates password match  
+  - Hashes the password with `bcrypt`  
+  - Creates a user with a default role  
+  - Returns a `JWT` token  
 
-- **Вход** (`POST /api/auth/login/`):
-  - Принимает: `email`, `password`.
-  - Проверяет пароль.
-  - Возвращает `JWT`-токен, если данные верны.
+- **Login** (`POST /api/auth/login/`)  
+  - Accepts: `email`, `password`  
+  - Verifies password  
+  - Returns a `JWT` token if credentials are correct  
 
-- **Выход** (`POST /api/auth/logout/`):
-  - Клиент должен удалить токен.
-  - Сервер не хранит состояние (stateless).
+- **Logout** (`POST /api/auth/logout/`)  
+  - Client should delete the token  
+  - Server remains stateless  
 
-- **Профиль** (`GET`, `PUT`, `DELETE /api/auth/profile/`):
-  - `GET`: Возвращает данные пользователя.
-  - `PUT`: Обновляет данные (имя, фамилию и т.д.).
-  - `DELETE`: Мягкое удаление (`is_active = False`).
-
----
-
-## 🔒 Авторизация
-
-- **JWT-аутентификация**:
-  - Токен передаётся в заголовке: `Authorization: Bearer <token>`.
-  - Кастомный `JWTAuthentication` извлекает `user` из токена и устанавливает в `request.user`.
-
-- **Кастомные права доступа**:
-  - Используется `AccessPermission` и его подклассы (например, `AccessPermissionForProducts`).
-  - Проверяет права пользователя на основе `role` и `business_element`.
-  - Возвращает:
-    - `401 Unauthorized`, если токен отсутствует/неправильный/просрочен.
-    - `403 Forbidden`, если у пользователя нет прав на запрашиваемое действие.
+- **Profile** (`GET`, `PUT`, `DELETE /api/auth/profile/`)  
+  - `GET`: Retrieve user info  
+  - `PUT`: Update user data  
+  - `DELETE`: Soft delete (`is_active = False`)  
 
 ---
 
-## 🧪 Mock-объекты
+## 🔒 Authorization
 
-- `/api/products/`, `/api/orders/` и другие:
-  - Возвращают фиктивные данные.
-  - Защищены с помощью `@permission_classes([AccessPermissionFor...])`.
-  - Пример ответа: `GET /api/products/` → `[{ "id": 1, "name": "Товар 1", "owner_id": 7 }]`.
+- **JWT Authentication**  
+  - Token is passed in header: `Authorization: Bearer <token>`  
+  - Custom `JWTAuthentication` extracts `user` from token and sets it in `request.user`.
 
----
-
-## 🔧 Управление правами (только для админа)
-
-- `GET /api/auth/access-rules/` — получить все правила.
-- `POST /api/auth/access-rules/` — создать новое правило.
-- `GET /api/auth/access-rules/{id}/` — получить правило по ID.
-- `PUT /api/auth/access-rules/{id}/` — обновить правило.
-- `DELETE /api/auth/access-rules/{id}/` — удалить правило.
+- **Custom Permissions**  
+  - Uses `AccessPermission` and subclasses (e.g., `AccessPermissionForProducts`)  
+  - Checks user rights based on `role` and `business_element`  
+  - Returns:
+    - `401 Unauthorized` — if token missing/invalid/expired  
+    - `403 Forbidden` — if user lacks required permission  
 
 ---
 
-## 📦 Установка и запуск
+## 🧪 Mock Objects
 
-1. Убедитесь, что у вас установлены `Python`, `PostgreSQL`, `pip`.
-2. Клонируйте репозиторий.
-3. Создайте виртуальное окружение:
+Endpoints such as `/api/products/`, `/api/orders/`, etc.  
+- Return dummy data  
+- Protected by `@permission_classes([AccessPermissionFor...])`  
+- Example:  
+  `GET /api/products/ → [{ "id": 1, "name": "Product 1", "owner_id": 7 }]`
+
+---
+
+## 🔧 Access Rule Management (Admin Only)
+
+- `GET /api/auth/access-rules/` — Get all rules  
+- `POST /api/auth/access-rules/` — Create new rule  
+- `GET /api/auth/access-rules/{id}/` — Get rule by ID  
+- `PUT /api/auth/access-rules/{id}/` — Update rule  
+- `DELETE /api/auth/access-rules/{id}/` — Delete rule  
+
+---
+
+## 📦 Installation and Launch
+
+1. Ensure `Python`, `PostgreSQL`, and `pip` are installed.  
+2. Clone the repository.  
+3. Create a virtual environment:
    ```bash
    python -m venv venv
    source venv/bin/activate  # Linux/macOS
-   # или
    venv\Scripts\activate     # Windows
    ```
 
-4. Установите зависимости:
+4. Install dependencies:
     ```bash
     pip install django djangorestframework psycopg2-binary PyJWT bcrypt python-decouple
     ```
 
-5. Настройте .env файл:
+5. Configure .env:
     ```env
     SECRET_KEY=ваш_секретный_ключ
     DEBUG=True
@@ -142,25 +138,25 @@
     DB_PORT=5432
     ```
 
-6. Выполните миграции:
+6. Apply migrations:
     ```bash
     python manage.py makemigrations
     python manage.py migrate
     ```
 
-7. Заполните БД тестовыми данными:
+7. Load test data:
     ```bash
     python manage.py init_data
     ```
 
-8. Запустите сервер:
+8. Run server:
     ```bash
     python manage.py runserver
     ```
 
-## Примеры запросов 
+## Example Requests
 
-- Регистрация: 
+- Registration: 
     ```bash
     curl -X POST http://127.0.0.1:8000/api/auth/register/ \
     -H "Content-Type: application/json" \
@@ -173,7 +169,7 @@
     }'
     ```
 
-- Вход:
+- Login:
     ```bash
     curl -X POST http://127.0.0.1:8000/api/auth/login/ \
     -H "Content-Type: application/json" \
@@ -183,21 +179,21 @@
     }'
     ```
 
-- Получение профиля:
+- Get Profile:
     ```bash
     curl -X GET http://127.0.0.1:8000/api/auth/profile/ \
-    -H "Authorization: Bearer <токен_из_ответа_на_вход>"
+    -H "Authorization: Bearer <token>"
     ```
 
-- Получение товаров (mock):
+- Get Products (mock):
     ```bash
     curl -X GET http://127.0.0.1:8000/api/products/ \
-    -H "Authorization: Bearer <токен_пользователя_с_правом_на_чтение>"
+    -H "Authorization: Bearer <user_token>"
     ```
 
-- Получение прав доступа (только админ):
+- Get Access Rules (admin only):
     ```bash
     curl -X GET http://127.0.0.1:8000/api/auth/access-rules/ \
-    -H "Authorization: Bearer <токен_админа>"
+    -H "Authorization: Bearer <admin_token>"
     ```
 
